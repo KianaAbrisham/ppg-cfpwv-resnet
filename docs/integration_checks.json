@@ -1,0 +1,6 @@
+{
+  "trained_checkpoint_prediction_roundtrips": [
+    "resnet18"
+  ],
+  "converter_roundtrip": "passed"
+}

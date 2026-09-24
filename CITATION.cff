@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "Please cite the related paper when using this implementation."
+type: software
+title: "PPG Spectrogram Regression with ResNet-18"
+version: 0.1.0
+authors:
+  - family-names: "Pilevar Abrisham"
+    given-names: "Kiana"
+preferred-citation:
+  type: article
+  title: "Deep Learning-Based Estimation of Arterial Stiffness from PPG Spectrograms: A Novel Approach for Non-Invasive Cardiovascular Diagnostics"
+  doi: "10.1109/EMBC53108.2024.10782553"
+  year: 2024
+  authors:
+    - family-names: "Pilevar Abrisham"
+      given-names: "Kiana"
+    - family-names: "Alipour"
+      given-names: "Khalil"
+    - family-names: "Tarvirdizadeh"
+      given-names: "Bahram"
+    - family-names: "Ghamari"
+      given-names: "Mohammad"

@@ -1,0 +1,37 @@
+{
+  "status": "artificial_data_software_check",
+  "folds": 1,
+  "models": {
+    "resnet18": {
+      "mae_m_s": {
+        "mean": 1.0643214706752815,
+        "std": 0.0
+      },
+      "rmse_m_s": {
+        "mean": 1.2725958805984454,
+        "std": 0.0
+      },
+      "r2": {
+        "mean": -0.1566577974297647,
+        "std": 0.0
+      },
+      "mape_percent": {
+        "mean": 14.554672445798863,
+        "std": 0.0
+      },
+      "latency_median_ms": {
+        "mean": 12.040730500018526,
+        "std": 0.0
+      },
+      "latency_p95_ms": {
+        "mean": 17.215664249994234,
+        "std": 0.0
+      },
+      "checkpoint_mb": {
+        "mean": 44.778891,
+        "std": 0.0
+      }
+    }
+  },
+  "interpretation": "Fold SD is not a confidence interval. Repeated model selection requires an independent final test or nested CV."
+}
