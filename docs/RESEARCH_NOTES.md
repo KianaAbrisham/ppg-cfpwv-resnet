@@ -1,38 +1,64 @@
-# Research provenance
+# Research provenance and implementation notes
 
-Source notebooks: EMBS.ipynb. Their SHA-256 hashes are in `provenance.json`.
-Original notebook bytes were preserved separately; the package is a new implementation copy.
+This repository refactors the author's `EMBS.ipynb` research notebook associated with [Deep Learning-Based Estimation of Arterial Stiffness from PPG Spectrograms: A Novel Approach for Non-Invasive Cardiovascular Diagnostics](https://doi.org/10.1109/EMBC53108.2024.10782553). The original notebook was preserved separately; its SHA-256 hash and the refactor's reproduction status are recorded in [`provenance.json`](provenance.json).
 
-## Implementation changes
+## Changes from the notebook
 
-Uses explicit Hamming windows, configured square resizing, and ImageNet channel normalization. This changes the original direct 0–255 preprocessing. Target scaling is training-only, validation is batched, and the best validation state is restored before testing. The supplied runner targets CPU for portability.
+- **Signal representation:** explicit Hamming windows, square resizing, and fixed ImageNet channel normalization replace the original direct 0–255 input preprocessing.
+- **Data alignment:** strict subject-ID matching replaces positional assumptions and truncation. Each run expects one waveform per subject from one artery.
+- **Input length:** a configured fixed length replaces dataset-wide implicit padding length. Shorter signals are zero-padded; longer signals are rejected without silent cropping.
+- **Training and evaluation:** target scaling uses training subjects only, validation is batched, and the best validation state is restored before testing.
+- **Execution and reuse:** command-line entry points, recorded subject splits, saved preprocessing, PyTorch state dictionaries, and automated checks support execution outside the original notebook.
 
-Across the project: strict subject-ID joins replace positional assumptions/truncation; fixed input
-length replaces dataset-wide implicit padding length; regression target scaling occurs inside the
-training partition; repeated notebook state is replaced by complete entry points and saved preprocessing.
-The corrections and modeling changes can change the reported scores.
+These corrections and modeling choices can change results relative to the source notebook. Numerical equivalence with the publication is not claimed.
 
-Spectrograms use 500 Hz by default, segment length 76, overlap `nperseg // 8`, constant detrending,
-PSD output and a 1e-10 power floor before 10·log10. Tukey, when selected explicitly, uses alpha .25.
-Zero padding and square image resizing are explicit modeling assumptions.
+## Spectrogram preprocessing
 
-## Results and limitations
+The current input pipeline is:
 
-The source studies use 4,374 simulated cardiovascular profiles. The regression target is cf-PWV in m/s.
-Performance on simulated profiles does not establish performance on wearable or patient recordings.
-The original final CSV exports, paper checkpoints and complete final experiment record were not supplied.
-Saved values in the old notebooks cannot certify that every cell is a publication-final experiment.
+1. Validate the waveform and pad it to the configured fixed length.
+2. Compute a SciPy power spectral density spectrogram.
+3. Apply `10 * log10(max(power, 1e-10))`.
+4. Min–max scale each spectrogram independently to the range [0, 1].
+5. Resize it with first-order interpolation, repeat it across three channels, and apply fixed ImageNet channel normalization.
 
-No published metric is presented as a result of this refactor. Before reporting corrected research
-scores, verify subject/site correspondence, sampling rate, target units, and waveform columns; run the
-full experiment and retain its configuration, input hashes and split records. Hardware/library versions
-can affect exact numerical reproducibility. CPU is the validated target; other devices require validation.
+| Setting | Research default |
+| --- | --- |
+| Waveform length | 2,000 samples |
+| Sampling rate | 500 Hz; configurable, with no resampling |
+| Segment length | 76 samples |
+| Window | Hamming; Hann and Tukey are optional |
+| Overlap | `nperseg // 8` samples |
+| Detrending | Constant |
+| Resized input | 224 × 224; demo mode uses 64 × 64 |
+| Channel means | `[0.485, 0.456, 0.406]` |
+| Channel standard deviations | `[0.229, 0.224, 0.225]` |
+
+The Tukey option uses alpha 0.25. This project applies its own spectrogram resizing; it does not use Torchvision's complete image resize-and-crop transform. Input min–max scaling is per sample, and channel normalization uses fixed constants. There are no input statistics fitted across the dataset. Regression target mean and standard deviation are fitted on the training partition only.
+
+Padding, square resizing, per-sample amplitude scaling, and window choice are experiment assumptions. Check them against the source waveform format before comparing research results.
+
+## Model and training
+
+The backbone is Torchvision ResNet-18, with the original classification layer replaced by a linear layer producing one value. With `--weights imagenet`, the backbone starts from `ResNet18_Weights.IMAGENET1K_V1`; the regression head is newly initialized. With `--weights none`, the entire model starts from random weights. Both modes train all parameters using Adam with learning rate 0.001 and mean squared error on scaled targets.
+
+The default maximum is 200 epochs, with patience 20 and batch size 32. The loader adjusts the effective training batch size when needed to avoid a final batch containing a single sample. Validation loss selects the state used for test evaluation. Training and inference run on CPU.
+
+`model.pt` contains the model state dictionary, including learned parameters and buffers. Loading uses the same architecture and saved preprocessing metadata; it does not require another ImageNet download. Optimizer state is not included in this checkpoint.
+
+## Evaluation and interpretation
+
+The runner reserves 20% of subjects for testing and 20% of the remaining subjects for validation, giving approximately 64/16/20 train/validation/test proportions. Exact counts depend on rounding. The shared `--folds` argument is accepted by the parser but does not enable cross-validation for this project. The `fold_1` directory and summary `mean`/`std` fields follow a shared output format; a zero `std` for one split does not quantify uncertainty.
+
+The related study uses [PWDB](https://zenodo.org/records/3275625), an in-silico dataset of virtual adults. The target is cf-PWV in m/s. Artificial waveforms generated by `--demo` are independent software fixtures, not PWDB records. Performance on simulated profiles does not establish performance on wearable or patient recordings.
+
+The original final CSV exports, paper-trained checkpoints, and complete final experiment record were not available for this refactor. Saved notebook values alone do not establish that every cell belongs to the publication's final experiment. No published metric is presented as a result of this implementation.
+
+Before reporting research scores, verify subject/site correspondence, sampling rate, target units, and waveform columns. Keep all records from a subject together in any evaluation design. Avoid tuning against held-out test results; repeated model selection requires a separate final test set or nested cross-validation. Retain input hashes, split IDs, configuration, preprocessing, and checkpoints. Hardware and library versions can affect exact numerical reproducibility. See the [validation record](VALIDATION.md) for completed checks and their limits.
 
 ## References
 
-- Paper: https://doi.org/10.1109/EMBC53108.2024.10782553
-- Dataset: https://zenodo.org/records/3275625
-- Signal processing: https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.spectrogram.html
-- Keras serialization: https://keras.io/guides/serialization_and_saving/
-- VGG preprocessing: https://keras.io/api/applications/vgg/
-- ResNet weights: https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.resnet18.html
+- [Related publication](https://doi.org/10.1109/EMBC53108.2024.10782553)
+- [PWDB dataset](https://zenodo.org/records/3275625)
+- [SciPy spectrogram documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.spectrogram.html)
+- [Torchvision 0.22 ResNet-18 and weight documentation](https://docs.pytorch.org/vision/0.22/models/generated/torchvision.models.resnet18.html)

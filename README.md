@@ -1,98 +1,115 @@
 # PPG Spectrogram Regression with ResNet-18
 
-Estimate cf-PWV from PPG spectrograms using a PyTorch ResNet-18 regressor and a separate validation set.
+[![Checks](https://github.com/KianaAbrisham/ppg-cfpwv-resnet/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/KianaAbrisham/ppg-cfpwv-resnet/actions/workflows/checks.yml)
+
+Estimate carotid–femoral pulse wave velocity (cf-PWV, m/s) from photoplethysmography (PPG) spectrograms with a PyTorch ResNet-18 regressor. The project provides waveform validation, spectrogram preprocessing, training with a separate validation set, held-out evaluation, and saved-model inference.
 
 **Author:** [Kiana Pilevar Abrisham](https://github.com/KianaAbrisham)  
-**Related paper:** [Deep Learning-Based Estimation of Arterial Stiffness from PPG Spectrograms: A Novel Approach for Non-Invasive Cardiovascular Diagnostics](https://doi.org/10.1109/EMBC53108.2024.10782553) (2024)
+**Related publication:** [Deep Learning-Based Estimation of Arterial Stiffness from PPG Spectrograms: A Novel Approach for Non-Invasive Cardiovascular Diagnostics](https://doi.org/10.1109/EMBC53108.2024.10782553) (2024)
 
-Refactored from the author's research notebooks. Includes training, saved-model inference,
-subject-ID validation, explicit preprocessing, reproducible splits, and automated tests.
-Full reproduction of the paper's numerical results has **not** been established.
+Refactored from the author's research notebook, with strict subject-ID matching, training-only target scaling, repeatable splits, and automated tests. The workflow has completed software checks on artificial data. Full reproduction of the paper's numerical results has not been established; see the [validation record](docs/VALIDATION.md).
+
+## Model and preprocessing
+
+| Stage | Implementation |
+| --- | --- |
+| Signal input | One fixed-length waveform per subject from one artery |
+| Spectrogram | SciPy power spectral density, converted to log power |
+| Model input | Per-spectrogram min–max scaling, square resizing, three repeated channels, and fixed ImageNet channel normalization |
+| Regressor | Torchvision ResNet-18 with its final layer replaced by a scalar linear output |
+| Training | All model parameters optimized; validation loss selects the checkpoint |
+| Output | Predicted cf-PWV restored to m/s |
+
+Research mode uses 224 × 224 inputs and supports ImageNet initialization or random initialization. The supplied runner executes on CPU. Exact preprocessing choices are documented in the [research notes](docs/RESEARCH_NOTES.md).
 
 ## Quick start
 
-Use Python **3.12** in this project's folder, with a separate environment for each project.
+Use **Python 3.12** in this repository's folder. Create an isolated environment:
 
 ```bash
 python -m venv .venv
 ```
 
-Activate with `.venv\Scripts\activate` in Windows Command Prompt or
-`source .venv/bin/activate` on Linux/macOS. Then:
+Activate it with `source .venv/bin/activate` on Linux/macOS, or `.venv\Scripts\activate` in Windows Command Prompt. Linux CPU is the validated environment.
+
+Install the pinned CPU dependencies, run the tests, and train the demo:
 
 ```bash
 python -m pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
 python train.py --demo --output runs/demo
+```
+
+The demo generates **72 artificial waveforms**, uses **512 samples per waveform** and **64 × 64 spectrogram inputs**, and trains for **one epoch on a single train/validation/test split**. It uses random initialization and does not download ImageNet weights. These fixtures are independent of PWDB; their scores measure neither research nor clinical performance. Use a new output folder for each training run.
+
+Reload the saved checkpoint and write predictions:
+
+```bash
 python predict.py --model-dir runs/demo/resnet18/fold_1 --signals runs/demo/demo_input/signals.csv --output runs/demo/new_predictions.csv
 ```
 
-Demo mode generates artificial waveforms, uses one epoch, and disables pretrained-weight downloads.
-It overrides length to 512 and Keras fold count to two. Its scores are **software checks**, not
-research or clinical results. Use a new output folder for each run; existing results are protected.
-The [quickstart notebook](notebooks/01_quickstart.ipynb) provides the same workflow with recorded outputs.
-See [validation](docs/VALIDATION.md) for the checks actually completed.
+The prediction CSV contains `subject_id`, `predicted_cfpwv_m_s`, and `model_status`. This command demonstrates checkpoint reuse on demo inputs. The directory name `fold_1` follows the shared output format; this project uses one holdout split, not cross-validation.
 
-## Research data
+The [executed quickstart notebook](notebooks/01_quickstart.ipynb) shows training, inference, and an evaluation plot. See the [validation record](docs/VALIDATION.md) for completed checks and GitHub Actions coverage.
 
-The related study uses [PWDB](https://zenodo.org/records/3275625), an in-silico dataset of virtual adults.
-The original local CSV exports are not included. This package does not automatically download or
-convert the source dataset. The artificial demo is independent of PWDB.
+## Use research data
 
-| CSV | Required columns | Meaning |
+The related study uses [PWDB](https://zenodo.org/records/3275625), an in-silico dataset of virtual adults. Original research CSV exports and paper-trained checkpoints are not included. `prepare_data.py` converts existing wide CSV exports; it does not download or process the raw PWDB release automatically.
+
+| File | Required columns | Meaning |
 | --- | --- | --- |
-| signals.csv | subject_id, s0000, s0001, ... | One subject and artery per row; waveform samples only |
-| targets.csv | subject_id, cfpwv_m_s | Positive cf-PWV in m/s |
+| `signals.csv` | `subject_id`, `s0000`, `s0001`, … | One waveform per subject from one artery; sample columns in time order |
+| `targets.csv` | `subject_id`, `cfpwv_m_s` | Finite, positive cf-PWV values in m/s |
 
-Target rows are joined by ID. ID sets must agree exactly; duplicated subjects, constant signals,
-internal missing values, and nonnumeric metadata are rejected. Trailing empty waveform cells are
-zero-padded. No waveform is silently cropped. `--length` defaults to 2000; choose a sufficient fixed
-length from the acquisition/export specification. `--fs` defaults to 500 Hz; the code does not resample.
+Targets are matched by subject ID. IDs must be unique, and both files must contain exactly the same subjects. The loader rejects empty or constant waveforms, internal missing samples, infinities, and metadata mixed into sample columns. Shorter waveforms, including trailing empty sample cells, are zero-padded; longer waveforms are rejected without silent cropping.
 
-Convert existing wide exports using exact original column names:
+Convert existing wide exports using the actual source column names:
 
 ```bash
 python prepare_data.py --signals original_signals.csv --targets original_targets.csv --signal-id-column subject_id --target-id-column subject_id --target-column cfpwv_m_s --task regression --output data/converted
 ```
 
-Quote headers containing spaces. Use `--drop-signal-columns` to remove an exported index or metadata
-explicitly. If neither CSV has an ID, `--assume-row-aligned` is available only after you independently
-verify identical subject ordering. Do not use it when correspondence is unknown.
+Quote column names containing spaces. Use `--drop-signal-columns` to remove exported indexes or metadata explicitly. If both files lack IDs, use `--assume-row-aligned` only after independently verifying their subject order.
+
+Train with ImageNet initialization:
 
 ```bash
-python train.py --signals data/converted/signals.csv --targets data/converted/targets.csv --site digital --models resnet18 --output runs/digital-01
+python train.py --signals data/converted/signals.csv --targets data/converted/targets.csv --site digital --models resnet18 --weights imagenet --output runs/digital-01
 ```
 
-Set `--site` from verified dataset identity; filenames alone are insufficient. Use separate runs for
-different arteries. Do not pool multiple artery records from the same subject into independent-row
-splits. `--weights imagenet` initializes VGG16/ResNet18 from downloaded pretrained weights; use
-`--weights none` for random initialization. See `python train.py --help` for settings.
+`--weights imagenet` loads Torchvision's `IMAGENET1K_V1` backbone weights, downloading them if they are not cached. The new regression layer is randomly initialized, and the full network is trained. Use `--weights none` for random initialization of the entire model. The recorded demo and CI checks use `none`; full research training and the ImageNet-initialized path have not been validated in this repository's recorded checks.
 
-## Evaluation and saved artifacts
+Set `--site` from verified dataset identity: `digital`, `radial`, or `brachial`. Use separate runs for different arteries; multiple records from one subject must not be treated as independent subjects.
 
-One 20% test holdout, with 20% of the remaining subjects reserved for validation: 64/16/20 overall. Preprocessing statistics are fitted on inner training subjects only.
-Early stopping uses validation loss, and test predictions use the best validation weights.
-Regression predictions are returned to m/s.
+Research defaults are `--length 2000`, `--fs 500`, `--nperseg 76`, `--window hamming`, a maximum of 200 epochs, early-stopping patience 20, batch size 32, and seed 42. Select length and sampling rate from the acquisition/export specification; the pipeline does not resample signals. Run `python train.py --help` for all options. The shared `--folds` argument does not change this runner's single-holdout protocol.
 
-Runs save configuration, dependency versions, input hashes, subject splits, history, checkpoints,
-preprocessing, held-out predictions, metrics, and plots. A training-only baseline is included.
-Regression reports MAE, RMSE, R² and MAPE; classification reports accuracy, macro F1 and weighted F1.
-Latency uses three warmups and twenty synchronous batch-one forward passes, excluding preprocessing.
-Checkpoint size is serialized file size; Keras archives include training state and are not deployment-only weight size.
+## Evaluation and saved outputs
 
-`predict.py` restores one fold model and its preprocessing; it does not refit an all-data model or
-ensemble folds. Fold standard deviations are not confidence intervals. Repeated model/hyperparameter
-selection requires a further independent test set or nested cross-validation.
+The runner reserves 20% of subjects for testing, then 20% of the remaining subjects for validation: approximately **64% training / 16% validation / 20% testing**, subject to rounding. Regression target statistics are fitted on training subjects only. Input min–max scaling is performed separately for each spectrogram, followed by fixed ImageNet channel normalization. No dataset-wide input statistics are fitted.
 
-## Structure and provenance
+Early stopping uses validation loss, and test predictions use the best validation state. Evaluation reports **MAE and RMSE (m/s), R², and MAPE (%)**, alongside a baseline that predicts the training subjects' mean target.
 
-- `ppg/`: data, preprocessing, model architecture, framework engine, training, inference.
-- `train.py`, `predict.py`, `prepare_data.py`: complete entry points.
-- `tests/`: alignment, split, window-setting and model-checkpoint regression tests.
-- `notebooks/01_quickstart.ipynb`: artificial-data walkthrough.
-- `docs/`: source hashes, implementation changes and validation record.
-- `.github/workflows/checks.yml`: CPU test and demo workflow.
+Each run saves:
 
-See [research notes](docs/RESEARCH_NOTES.md) for changes from the notebooks and limitations.
-Paper citation metadata are provided in `CITATION.cff`.
+- Configuration, dependency versions, input hashes, and subject IDs for each partition.
+- Preprocessing metadata, the best model's `model.pt` state dictionary, loss history, metrics, and baseline results.
+- Held-out predictions, an evaluation plot, and a summary for the single holdout split.
+
+The shared summary format uses `mean` and `std` fields. Here, `mean` is the single-split result and `std: 0` is a placeholder; it does not estimate variability or uncertainty. Repeated model or hyperparameter selection requires a separate final test set or nested cross-validation.
+
+Timing reports the median and 95th percentile of 20 synchronous, batch-one CPU forward passes after three warmups; input preprocessing is excluded. Checkpoint size measures the serialized model state dictionary, including model buffers and excluding optimizer state.
+
+## Repository guide
+
+| Location | Contents |
+| --- | --- |
+| [`ppg/`](ppg/) | Data validation, preprocessing, model, training, and inference |
+| [`train.py`](train.py), [`predict.py`](predict.py), [`prepare_data.py`](prepare_data.py) | Command-line entry points |
+| [`tests/`](tests/) | Input, split-helper, preprocessing, and checkpoint regression tests |
+| [`notebooks/01_quickstart.ipynb`](notebooks/01_quickstart.ipynb) | Executed artificial-data walkthrough |
+| [`docs/VALIDATION.md`](docs/VALIDATION.md) | Completed checks, evidence, and coverage limits |
+| [`docs/RESEARCH_NOTES.md`](docs/RESEARCH_NOTES.md) | Provenance and implementation choices |
+| [`.github/workflows/checks.yml`](.github/workflows/checks.yml) | Automated CPU tests and demo |
+
+Citation metadata are available in [`CITATION.cff`](CITATION.cff). Performance on simulated profiles alone does not establish performance on patient or wearable recordings.
