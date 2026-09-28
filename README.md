@@ -115,3 +115,9 @@ Timing reports the median and 95th percentile of 20 synchronous, batch-one CPU f
 | [`.github/workflows/checks.yml`](.github/workflows/checks.yml) | Automated CPU tests and demo |
 
 Citation metadata are available in [`CITATION.cff`](CITATION.cff). Performance on simulated profiles alone does not establish performance on patient or wearable recordings.
+
+## Research implementation
+
+The source is Kiana Pilevar Abrisham's research notebook for the cited EMBC paper. The current PyTorch package, validation split, checkpoint workflow, tests, and documentation were developed and revised with AI coding assistance. [Implementation notes](docs/RESEARCH_NOTES.md) describe how this version differs from the notebook; the executed demo covers the CPU workflow.
+
+Recorded checks were run in a hosted Linux CPU environment. See the [portfolio development notes](https://github.com/KianaAbrisham/KianaAbrisham/blob/main/docs/DEVELOPMENT.md) for execution provenance and the scope of AI assistance.
