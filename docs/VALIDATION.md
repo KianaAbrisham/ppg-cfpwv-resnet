@@ -55,3 +55,7 @@ The workflow checks the test suite and one-epoch ResNet demo with random initial
 Original research CSV exports, paper-trained checkpoints, and a complete final experiment record were unavailable. Full PWDB experiments, ImageNet-initialized training, and reproduction of the publication's numerical results have not been verified. Windows and macOS execution have not been validated. The supplied runner executes on CPU and does not implement GPU device selection.
 
 Before reporting research performance, follow the [research notes](RESEARCH_NOTES.md) and retain the full experiment's configuration, input hashes, subject splits, preprocessing, checkpoint, and held-out predictions.
+
+## Public-source conversion verified — 2026-09-28
+
+The official PWDB v0.2 waveform archive, haemodynamic targets and provided fiducials were downloaded and verified against publisher checksums. All 4,374 subject IDs were aligned explicitly, all waveform values passed a CSV round-trip check, and the target units and sampling rate were checked against the source documentation. Four additional tests verify shuffled-ID alignment and rejection of duplicate IDs, missing subjects and corrupt cached downloads. See [public data setup](PUBLIC_DATA.md) and the [conversion manifest](public_data/conversion_manifest.json). These checks validate data preparation; they do not establish numerical reproduction of a paper.
